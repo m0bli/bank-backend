@@ -14,7 +14,7 @@ public class Konto {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "numer_konta", nullable = false)
+    @Column(name = "numer_konta", nullable = false, unique = true)
     private String numerKonta;
 
     @Column(nullable = false, precision = 15, scale = 2)
@@ -30,12 +30,7 @@ public class Konto {
     @JoinColumn(name = "uzytkownik_id", nullable = false)
     private User uzytkownik;
 
-    public User getUzytkownik() {
-        return uzytkownik;
-    }
-
-    public void setUzytkownik(User uzytkownik) {
-        this.uzytkownik = uzytkownik;
+    public Konto() {
     }
 
     public Long getId() {
@@ -72,5 +67,13 @@ public class Konto {
 
     public void setDataUtworzenia(LocalDateTime dataUtworzenia) {
         this.dataUtworzenia = dataUtworzenia;
+    }
+
+    public User getUzytkownik() {
+        return uzytkownik;
+    }
+
+    public void setUzytkownik(User uzytkownik) {
+        this.uzytkownik = uzytkownik;
     }
 }
