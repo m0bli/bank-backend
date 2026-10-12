@@ -1,5 +1,6 @@
 package com.example.backend.konto;
 
+import com.example.backend.user.User;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -25,7 +26,17 @@ public class Konto {
     @Column(name = "data_utworzenia", nullable = false)
     private LocalDateTime dataUtworzenia;
 
-    // tutaj Twoje ManyToOne do User
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "uzytkownik_id", nullable = false)
+    private User uzytkownik;
+
+    public User getUzytkownik() {
+        return uzytkownik;
+    }
+
+    public void setUzytkownik(User uzytkownik) {
+        this.uzytkownik = uzytkownik;
+    }
 
     public Long getId() {
         return id;
