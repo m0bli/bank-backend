@@ -41,7 +41,7 @@ public class KontoController {
 
         Konto konto = new Konto();
 
-        konto.setUzytkownik(user);
+//        konto.setUzytkownik(user);
         konto.setNumerKonta(request.numerKonta());
         konto.setSaldo(request.saldo());
         konto.setWaluta(request.waluta());
