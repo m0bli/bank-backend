@@ -8,7 +8,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
+//fuck you
     public record ErrorResponse(String message) {
     }
 
