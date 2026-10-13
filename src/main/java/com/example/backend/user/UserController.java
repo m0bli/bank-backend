@@ -54,6 +54,13 @@ public class UserController {
             );
         }
 
+        if (userRepository.existsByLogin(request.login())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Ten login jest już zajęty"
+            );
+        }
+
         User user = new User();
         user.setImie(request.imie());
         user.setNazwisko(request.nazwisko());
