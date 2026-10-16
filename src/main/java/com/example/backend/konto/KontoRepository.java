@@ -5,14 +5,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
 import java.util.Optional;
 
-public interface KontoRepository
-        extends JpaRepository<Konto, Long> {
-
+public interface KontoRepository extends JpaRepository<Konto, Long> {
     boolean existsByNumerKonta(String numerKonta);
-
+    Optional<Konto> findByNumerKonta(String numerKonta);
     Optional<Konto> findFirstByUzytkownik_Id(Long uzytkownikId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
