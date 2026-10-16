@@ -5,111 +5,61 @@ import com.example.backend.konto.KontoRepository;
 import com.example.backend.transakcja.dto.TransakcjaRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
 public class TransakcjaService {
-
     private final TransakcjaRepository transakcjaRepository;
     private final KontoRepository kontoRepository;
 
-    public TransakcjaService(
-            TransakcjaRepository transakcjaRepository,
-            KontoRepository kontoRepository
-    ) {
+    public TransakcjaService(TransakcjaRepository transakcjaRepository, KontoRepository kontoRepository) {
         this.transakcjaRepository = transakcjaRepository;
         this.kontoRepository = kontoRepository;
     }
 
     @Transactional
-    public Transakcja wykonajTransakcje(
-            TransakcjaRequest request
-    ) {
-        if (request == null) {
-            throw new IllegalArgumentException(
-                    "Dane transakcji są wymagane"
-            );
+    public Transakcja wykonajTransakcje(TransakcjaRequest request) {
+        if (request == null) throw new IllegalArgumentException("Dane przelewu są wymagane");
+        if (request.getTyp() != TypTransakcji.PRZELEW) {
+            throw new IllegalArgumentException("Ten endpoint obsługuje wyłącznie przelewy");
         }
-
-        if (request.getTyp() == null) {
-            throw new IllegalArgumentException(
-                    "Typ transakcji jest wymagany"
-            );
+        if (request.getUzytkownikId() == null || request.getUzytkownikId() <= 0) {
+            throw new IllegalArgumentException("Użytkownik jest wymagany");
+        }
+        if (request.getKontoZrodloweId() == null || request.getKontoZrodloweId() <= 0) {
+            throw new IllegalArgumentException("Konto źródłowe jest wymagane");
         }
 
         BigDecimal kwota = request.getKwota();
-
-        if (kwota == null ||
-                kwota.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                    "Kwota musi być większa od 0"
-            );
+        if (kwota == null || kwota.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Kwota musi być większa od 0");
         }
-
         if (kwota.scale() > 2) {
-            throw new IllegalArgumentException(
-                    "Kwota może mieć maksymalnie 2 miejsca po przecinku"
-            );
+            throw new IllegalArgumentException("Kwota może mieć maksymalnie 2 miejsca po przecinku");
         }
 
         String waluta = request.getWaluta();
-
-        if (waluta == null ||
-                !waluta.matches("[A-Z]{3}")) {
-            throw new IllegalArgumentException(
-                    "Nieprawidłowy format waluty"
-            );
+        if (waluta == null || !waluta.matches("[A-Z]{3}")) {
+            throw new IllegalArgumentException("Nieprawidłowa waluta. Wybierz np. PLN");
         }
+        String tytul = request.getTytul() == null ? "" : request.getTytul().trim();
+        if (tytul.isEmpty()) throw new IllegalArgumentException("Tytuł przelewu jest wymagany");
+        if (tytul.length() > 140) throw new IllegalArgumentException("Tytuł przelewu może mieć maksymalnie 140 znaków");
 
-        Transakcja transakcja = new Transakcja();
+        String numerOdbiorcy = normalizujNumerKonta(request.getNumerKontaOdbiorcy());
+        String imieOdbiorcy = request.getImieOdbiorcy() == null ? "" : request.getImieOdbiorcy().trim();
+        if (imieOdbiorcy.isEmpty()) throw new IllegalArgumentException("Imię odbiorcy jest wymagane");
 
-        transakcja.setTyp(request.getTyp());
-        transakcja.setKwota(kwota);
-        transakcja.setWaluta(waluta);
-        transakcja.setTytul(request.getTytul());
-
-        // Data operacji jest ustalana przez serwer.
-        transakcja.setDataOperacji(LocalDateTime.now());
-
-        switch (request.getTyp()) {
-            case PRZELEW ->
-                    wykonajPrzelew(request, transakcja);
-
-            case WPLATA ->
-                    wykonajWplate(request, transakcja);
-
-            case WYPLATA ->
-                    wykonajWyplate(request, transakcja);
-        }
-
-        return transakcjaRepository.save(transakcja);
-    }
-
-    private void wykonajPrzelew(
-            TransakcjaRequest request,
-            Transakcja transakcja
-    ) {
+        Konto znalezioneKontoDocelowe = kontoRepository.findByNumerKonta(numerOdbiorcy)
+                .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono konta odbiorcy"));
         Long zrodloId = request.getKontoZrodloweId();
-        Long celId = request.getKontoDoceloweId();
+        Long celId = znalezioneKontoDocelowe.getId();
+        if (zrodloId.equals(celId)) throw new IllegalArgumentException("Nie można wykonać przelewu na to samo konto");
 
-        if (zrodloId == null || celId == null) {
-            throw new IllegalArgumentException(
-                    "Przelew wymaga konta źródłowego i docelowego"
-            );
-        }
-
-        if (zrodloId.equals(celId)) {
-            throw new IllegalArgumentException(
-                    "Konta źródłowe i docelowe nie mogą być takie same"
-            );
-        }
-
-        // Blokujemy konta zawsze w kolejności rosnącego ID.
+        // Blokuj oba rachunki w stałej kolejności, aby ograniczyć deadlocki.
         Konto pierwsze;
         Konto drugie;
-
         if (zrodloId < celId) {
             pierwsze = pobierzDoBlokady(zrodloId);
             drugie = pobierzDoBlokady(celId);
@@ -117,123 +67,60 @@ public class TransakcjaService {
             pierwsze = pobierzDoBlokady(celId);
             drugie = pobierzDoBlokady(zrodloId);
         }
+        Konto kontoZrodlowe = zrodloId.equals(pierwsze.getId()) ? pierwsze : drugie;
+        Konto kontoDocelowe = celId.equals(pierwsze.getId()) ? pierwsze : drugie;
 
-        Konto kontoZrodlowe =
-                zrodloId.equals(pierwsze.getId())
-                        ? pierwsze : drugie;
+        // To sprawdzenie nie zastępuje uwierzytelniania tokenem; obecny login zwraca samo ID.
+        if (kontoZrodlowe.getUzytkownik() == null
+                || !request.getUzytkownikId().equals(kontoZrodlowe.getUzytkownik().getId())) {
+            throw new IllegalArgumentException("Konto źródłowe nie należy do tego użytkownika");
+        }
+        if (kontoDocelowe.getUzytkownik() == null
+                || kontoDocelowe.getUzytkownik().getImie() == null
+                || !kontoDocelowe.getUzytkownik().getImie().trim().equalsIgnoreCase(imieOdbiorcy)) {
+            throw new IllegalArgumentException("Imię odbiorcy nie zgadza się z właścicielem konta");
+        }
+        sprawdzWalute(kontoZrodlowe, waluta);
+        sprawdzWalute(kontoDocelowe, waluta);
+        if (!kontoZrodlowe.getWaluta().equals(kontoDocelowe.getWaluta())) {
+            throw new IllegalArgumentException("Konta mają różne waluty. Przelewy między różnymi walutami są niedostępne");
+        }
+        if (kontoZrodlowe.getSaldo() == null || kontoZrodlowe.getSaldo().compareTo(kwota) < 0) {
+            throw new IllegalArgumentException("Brak wystarczających środków na koncie");
+        }
 
-        Konto kontoDocelowe =
-                celId.equals(pierwsze.getId())
-                        ? pierwsze : drugie;
+        // Salda i zapis transakcji są jedną operacją DB dzięki @Transactional.
+        kontoZrodlowe.setSaldo(kontoZrodlowe.getSaldo().subtract(kwota));
+        kontoDocelowe.setSaldo(kontoDocelowe.getSaldo().add(kwota));
 
-        sprawdzWalute(kontoZrodlowe, request.getWaluta());
-        sprawdzWalute(kontoDocelowe, request.getWaluta());
-        sprawdzSaldo(kontoZrodlowe, request.getKwota());
-
-        kontoZrodlowe.setSaldo(
-                kontoZrodlowe.getSaldo()
-                        .subtract(request.getKwota())
-        );
-
-        kontoDocelowe.setSaldo(
-                kontoDocelowe.getSaldo()
-                        .add(request.getKwota())
-        );
-
-        // Encje są zarządzane przez JPA w tej transakcji.
+        Transakcja transakcja = new Transakcja();
         transakcja.setKontoZrodlowe(kontoZrodlowe);
         transakcja.setKontoDocelowe(kontoDocelowe);
+        transakcja.setTyp(TypTransakcji.PRZELEW);
+        transakcja.setKwota(kwota);
+        transakcja.setWaluta(waluta);
+        transakcja.setTytul(tytul);
+        transakcja.setDataOperacji(LocalDateTime.now());
+        return transakcjaRepository.save(transakcja);
     }
 
-    private void wykonajWplate(
-            TransakcjaRequest request,
-            Transakcja transakcja
-    ) {
-        if (request.getKontoDoceloweId() == null) {
-            throw new IllegalArgumentException(
-                    "Wpłata wymaga konta docelowego"
-            );
+    private String normalizujNumerKonta(String numer) {
+        if (numer == null) throw new IllegalArgumentException("Numer konta odbiorcy jest wymagany");
+        String wynik = numer.replaceAll("\\s+", "");
+        if (!wynik.matches("\\d{26}")) {
+            throw new IllegalArgumentException("Numer konta musi zawierać 26 cyfr");
         }
-
-        if (request.getKontoZrodloweId() != null) {
-            throw new IllegalArgumentException(
-                    "Wpłata nie może mieć konta źródłowego"
-            );
-        }
-
-        Konto konto = pobierzDoBlokady(
-                request.getKontoDoceloweId()
-        );
-
-        sprawdzWalute(konto, request.getWaluta());
-
-        konto.setSaldo(
-                konto.getSaldo().add(request.getKwota())
-        );
-
-        transakcja.setKontoDocelowe(konto);
-    }
-
-    private void wykonajWyplate(
-            TransakcjaRequest request,
-            Transakcja transakcja
-    ) {
-        if (request.getKontoZrodloweId() == null) {
-            throw new IllegalArgumentException(
-                    "Wypłata wymaga konta źródłowego"
-            );
-        }
-
-        if (request.getKontoDoceloweId() != null) {
-            throw new IllegalArgumentException(
-                    "Wypłata nie może mieć konta docelowego"
-            );
-        }
-
-        Konto konto = pobierzDoBlokady(
-                request.getKontoZrodloweId()
-        );
-
-        sprawdzWalute(konto, request.getWaluta());
-        sprawdzSaldo(konto, request.getKwota());
-
-        konto.setSaldo(
-                konto.getSaldo().subtract(request.getKwota())
-        );
-
-        transakcja.setKontoZrodlowe(konto);
+        return wynik;
     }
 
     private Konto pobierzDoBlokady(Long id) {
         return kontoRepository.findByIdForUpdate(id)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Nie znaleziono konta o ID: " + id
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono konta"));
     }
 
-    private void sprawdzSaldo(
-            Konto konto,
-            BigDecimal kwota
-    ) {
-        if (konto.getSaldo() == null ||
-                konto.getSaldo().compareTo(kwota) < 0) {
-            throw new IllegalArgumentException(
-                    "Brak wystarczających środków na koncie"
-            );
-        }
-    }
-
-    private void sprawdzWalute(
-            Konto konto,
-            String waluta
-    ) {
-        if (konto.getWaluta() == null ||
-                !konto.getWaluta().equals(waluta)) {
-            throw new IllegalArgumentException(
-                    "Waluta transakcji nie zgadza się z walutą konta"
-            );
+    private void sprawdzWalute(Konto konto, String waluta) {
+        if (konto.getWaluta() == null || !konto.getWaluta().equals(waluta)) {
+            throw new IllegalArgumentException("Wybrana waluta musi być zgodna z walutą obu kont");
         }
     }
 }
