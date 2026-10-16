@@ -62,7 +62,7 @@ public class KontoController {
                         )
                 );
 
-        return new SaldoResponse(konto.getSaldo(), konto.getWaluta());
+        return new SaldoResponse(konto.getId(), konto.getSaldo(), konto.getWaluta());
     }
 
     @PostMapping
