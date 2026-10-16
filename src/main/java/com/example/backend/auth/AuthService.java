@@ -18,21 +18,23 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    public boolean zaloguj(String login, String haslo) {
+    public Long zaloguj(String login, String haslo) {
         if (login == null || haslo == null) {
-            return false;
+            return null;
         }
 
         User user = userRepository.findByLogin(login)
                 .orElse(null);
 
         if (user == null || user.getHasloHash() == null) {
-            return false;
+            return null;
         }
 
-        return passwordEncoder.matches(
+        boolean poprawneHaslo = passwordEncoder.matches(
                 haslo,
                 user.getHasloHash()
         );
+
+        return poprawneHaslo ? user.getId() : null;
     }
 }
