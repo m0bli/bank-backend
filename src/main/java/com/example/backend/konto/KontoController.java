@@ -42,6 +42,29 @@ public class KontoController {
                 );
     }
 
+    @GetMapping("/uzytkownik/{uzytkownikId}/saldo")
+    public SaldoResponse getSaldoUzytkownika(
+            @PathVariable Long uzytkownikId
+    ) {
+        if (!userRepository.existsById(uzytkownikId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Nie znaleziono użytkownika"
+            );
+        }
+
+        Konto konto = kontoRepository
+                .findFirstByUzytkownik_Id(uzytkownikId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Nie znaleziono konta użytkownika"
+                        )
+                );
+
+        return new SaldoResponse(konto.getSaldo(), konto.getWaluta());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Konto createKonto(
