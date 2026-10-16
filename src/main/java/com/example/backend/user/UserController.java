@@ -1,7 +1,9 @@
 package com.example.backend.user;
 
+import com.example.backend.konto.KontoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -15,12 +17,15 @@ public class UserController {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final KontoService kontoService;
 
     public UserController(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            KontoService kontoService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.kontoService = kontoService;
     }
 
     @GetMapping
@@ -43,10 +48,12 @@ public class UserController {
     }
 
     @PostMapping
+    @Transactional
     public ResponseEntity<UserResponse> createUser(
             @RequestBody UserRequest request) {
 
-        if (request.login() == null || request.login().isBlank()
+        if (request == null
+                || request.login() == null || request.login().isBlank()
                 || request.haslo() == null || request.haslo().isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -64,13 +71,9 @@ public class UserController {
         User user = new User();
         user.setImie(request.imie());
         user.setNazwisko(request.nazwisko());
-        user.setLogin(request.login());
+        user.setLogin(request.login().trim());
         user.setEmail(request.email());
-
-        user.setHasloHash(
-                passwordEncoder.encode(request.haslo())
-        );
-
+        user.setHasloHash(passwordEncoder.encode(request.haslo()));
         user.setDataRejestracji(
                 request.dataRejestracji() != null
                         ? request.dataRejestracji()
@@ -78,6 +81,9 @@ public class UserController {
         );
 
         User savedUser = userRepository.save(user);
+
+        // Konto powstaje w tej samej transakcji co użytkownik.
+        kontoService.utworzKontoDla(savedUser);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
