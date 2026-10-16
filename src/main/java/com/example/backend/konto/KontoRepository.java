@@ -11,6 +11,8 @@ import java.util.Optional;
 public interface KontoRepository
         extends JpaRepository<Konto, Long> {
 
+    boolean existsByNumerKonta(String numerKonta);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT k FROM Konto k WHERE k.id = :id")
     Optional<Konto> findByIdForUpdate(@Param("id") Long id);
