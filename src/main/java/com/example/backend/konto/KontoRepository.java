@@ -13,6 +13,8 @@ public interface KontoRepository
 
     boolean existsByNumerKonta(String numerKonta);
 
+    Optional<Konto> findFirstByUzytkownik_Id(Long uzytkownikId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT k FROM Konto k WHERE k.id = :id")
     Optional<Konto> findByIdForUpdate(@Param("id") Long id);
