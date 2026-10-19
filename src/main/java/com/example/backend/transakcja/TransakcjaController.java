@@ -1,6 +1,9 @@
 package com.example.backend.transakcja;
 
+import com.example.backend.transakcja.dto.TransakcjaHistoriaResponse;
 import com.example.backend.transakcja.dto.TransakcjaRequest;
+import com.example.backend.transakcja.dto.TransakcjaResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,27 +23,21 @@ public class TransakcjaController {
         this.transakcjaService = transakcjaService;
     }
 
-    @GetMapping
-    public List<Transakcja> getTransakcje() {
-        return transakcjaRepository.findAll();
+    @GetMapping("/konto/{kontoId}")
+    public List<TransakcjaHistoriaResponse> getHistoriaKonta(@PathVariable Long kontoId) {
+        return transakcjaService.historiaKonta(kontoId);
     }
 
     @GetMapping("/{id}")
-    public Transakcja getTransakcja(@PathVariable Long id) {
-        return transakcjaRepository
-                .findById(id)
-                .orElseThrow();
+    public TransakcjaResponse getTransakcja(@PathVariable Long id) {
+        Transakcja transakcja = transakcjaRepository.findById(id)
+                .orElseThrow(() -> new java.util.NoSuchElementException("Nie znaleziono transakcji"));
+        return TransakcjaResponse.from(transakcja);
     }
 
     @PostMapping
-    public Transakcja createTransakcja(
-            @RequestBody TransakcjaRequest request
-    ) {
-        return transakcjaService.wykonajTransakcje(request);
-    }
-
-    @DeleteMapping("/{id}")
-    public void deleteTransakcja(@PathVariable Long id) {
-        transakcjaRepository.deleteById(id);
+    @ResponseStatus(HttpStatus.CREATED)
+    public TransakcjaResponse createTransakcja(@RequestBody TransakcjaRequest request) {
+        return TransakcjaResponse.from(transakcjaService.wykonajTransakcje(request));
     }
 }
