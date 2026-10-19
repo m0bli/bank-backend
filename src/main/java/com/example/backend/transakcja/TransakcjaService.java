@@ -2,11 +2,14 @@ package com.example.backend.transakcja;
 
 import com.example.backend.konto.Konto;
 import com.example.backend.konto.KontoRepository;
+import com.example.backend.transakcja.dto.TransakcjaHistoriaResponse;
 import com.example.backend.transakcja.dto.TransakcjaRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class TransakcjaService {
@@ -16,6 +19,35 @@ public class TransakcjaService {
     public TransakcjaService(TransakcjaRepository transakcjaRepository, KontoRepository kontoRepository) {
         this.transakcjaRepository = transakcjaRepository;
         this.kontoRepository = kontoRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TransakcjaHistoriaResponse> historiaKonta(Long kontoId) {
+        if (kontoId == null || kontoId <= 0) {
+            throw new IllegalArgumentException("Prawidłowe ID konta jest wymagane");
+        }
+        if (!kontoRepository.existsById(kontoId)) {
+            throw new java.util.NoSuchElementException("Nie znaleziono konta");
+        }
+        return transakcjaRepository
+                .findByKontoZrodlowe_IdOrKontoDocelowe_IdOrderByDataOperacjiDesc(kontoId, kontoId)
+                .stream()
+                .map(t -> {
+                    boolean wychodzaca = t.getKontoZrodlowe().getId().equals(kontoId);
+                    Konto kontrahent = wychodzaca ? t.getKontoDocelowe() : t.getKontoZrodlowe();
+                    return new TransakcjaHistoriaResponse(
+                            t.getId(),
+                            kontoId,
+                            wychodzaca ? "WYDATEK" : "WPLYW",
+                            kontrahent.getNumerKonta(),
+                            t.getTyp().name(),
+                            t.getKwota(),
+                            t.getWaluta(),
+                            t.getTytul(),
+                            t.getDataOperacji()
+                    );
+                })
+                .toList();
     }
 
     @Transactional
@@ -38,7 +70,6 @@ public class TransakcjaService {
         if (kwota.scale() > 2) {
             throw new IllegalArgumentException("Kwota może mieć maksymalnie 2 miejsca po przecinku");
         }
-
         String waluta = request.getWaluta();
         if (waluta == null || !waluta.matches("[A-Z]{3}")) {
             throw new IllegalArgumentException("Nieprawidłowa waluta. Wybierz np. PLN");
@@ -57,7 +88,6 @@ public class TransakcjaService {
         Long celId = znalezioneKontoDocelowe.getId();
         if (zrodloId.equals(celId)) throw new IllegalArgumentException("Nie można wykonać przelewu na to samo konto");
 
-        // Blokuj oba rachunki w stałej kolejności, aby ograniczyć deadlocki.
         Konto pierwsze;
         Konto drugie;
         if (zrodloId < celId) {
@@ -70,7 +100,6 @@ public class TransakcjaService {
         Konto kontoZrodlowe = zrodloId.equals(pierwsze.getId()) ? pierwsze : drugie;
         Konto kontoDocelowe = celId.equals(pierwsze.getId()) ? pierwsze : drugie;
 
-        // To sprawdzenie nie zastępuje uwierzytelniania tokenem; obecny login zwraca samo ID.
         if (kontoZrodlowe.getUzytkownik() == null
                 || !request.getUzytkownikId().equals(kontoZrodlowe.getUzytkownik().getId())) {
             throw new IllegalArgumentException("Konto źródłowe nie należy do tego użytkownika");
@@ -89,7 +118,6 @@ public class TransakcjaService {
             throw new IllegalArgumentException("Brak wystarczających środków na koncie");
         }
 
-        // Salda i zapis transakcji są jedną operacją DB dzięki @Transactional.
         kontoZrodlowe.setSaldo(kontoZrodlowe.getSaldo().subtract(kwota));
         kontoDocelowe.setSaldo(kontoDocelowe.getSaldo().add(kwota));
 
