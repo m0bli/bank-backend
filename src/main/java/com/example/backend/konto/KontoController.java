@@ -18,112 +18,73 @@ public class KontoController {
     private final KontoRepository kontoRepository;
     private final UserRepository userRepository;
 
-    public KontoController(
-            KontoRepository kontoRepository,
-            UserRepository userRepository
-    ) {
+    public KontoController(KontoRepository kontoRepository, UserRepository userRepository) {
         this.kontoRepository = kontoRepository;
         this.userRepository = userRepository;
     }
 
     @GetMapping
-    public List<Konto> getKonta() {
-        return kontoRepository.findAll();
+    public List<KontoResponse> getKonta() {
+        return kontoRepository.findAll().stream().map(KontoResponse::from).toList();
     }
 
     @GetMapping("/{id}")
-    public Konto getKonto(@PathVariable Long id) {
-        return kontoRepository.findById(id)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nie znaleziono konta"
-                        )
-                );
+    public KontoResponse getKonto(@PathVariable Long id) {
+        Konto konto = kontoRepository.findById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono konta"));
+        return KontoResponse.from(konto);
+    }
+
+    @GetMapping("/uzytkownik/{uzytkownikId}")
+    public List<KontoResponse> getKontaUzytkownika(@PathVariable Long uzytkownikId) {
+        if (!userRepository.existsById(uzytkownikId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono użytkownika");
+        }
+        return kontoRepository.findAll().stream()
+                .filter(k -> k.getUzytkownik() != null
+                        && uzytkownikId.equals(k.getUzytkownik().getId()))
+                .map(KontoResponse::from)
+                .toList();
     }
 
     @GetMapping("/uzytkownik/{uzytkownikId}/saldo")
-    public SaldoResponse getSaldoUzytkownika(
-            @PathVariable Long uzytkownikId
-    ) {
+    public SaldoResponse getSaldoUzytkownika(@PathVariable Long uzytkownikId) {
         if (!userRepository.existsById(uzytkownikId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Nie znaleziono użytkownika"
-            );
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono użytkownika");
         }
-
-        Konto konto = kontoRepository
-                .findFirstByUzytkownik_Id(uzytkownikId)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nie znaleziono konta użytkownika"
-                        )
-                );
-
+        Konto konto = kontoRepository.findFirstByUzytkownik_Id(uzytkownikId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono konta użytkownika"));
         return new SaldoResponse(konto.getSaldo(), konto.getWaluta());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Konto createKonto(
-            @RequestBody KontoRequest request
-    ) {
+    public KontoResponse createKonto(@RequestBody KontoRequest request) {
         if (request.uzytkownikId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Użytkownik jest wymagany"
-            );
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Użytkownik jest wymagany");
         }
-
-        if (request.numerKonta() == null ||
-                request.numerKonta().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Numer konta jest wymagany"
-            );
+        if (request.numerKonta() == null || request.numerKonta().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Numer konta jest wymagany");
         }
-
-        if (request.waluta() == null ||
-                !request.waluta().matches("[A-Z]{3}")) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Waluta musi mieć format np. PLN"
-            );
+        if (request.waluta() == null || !request.waluta().matches("[A-Z]{3}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Waluta musi mieć format np. PLN");
         }
-
-        User user = userRepository.findById(
-                request.uzytkownikId()
-        ).orElseThrow(() ->
-                new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Nie znaleziono użytkownika"
-                )
-        );
-
+        User user = userRepository.findById(request.uzytkownikId()).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono użytkownika"));
         Konto konto = new Konto();
-
         konto.setUzytkownik(user);
         konto.setNumerKonta(request.numerKonta().trim());
         konto.setSaldo(BigDecimal.ZERO.setScale(2));
         konto.setWaluta(request.waluta());
         konto.setDataUtworzenia(LocalDateTime.now());
-
-        return kontoRepository.save(konto);
+        return KontoResponse.from(kontoRepository.save(konto));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteKonto(@PathVariable Long id) {
-        Konto konto = kontoRepository.findById(id)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nie znaleziono konta"
-                        )
-                );
-
+        Konto konto = kontoRepository.findById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono konta"));
         kontoRepository.delete(konto);
     }
 }
