@@ -40,6 +40,7 @@ public class TransakcjaService {
                             kontoId,
                             wychodzaca ? "WYDATEK" : "WPLYW",
                             kontrahent.getNumerKonta(),
+                            kontrahent.getUzytkownik() == null ? null : kontrahent.getUzytkownik().getImie(),
                             t.getTyp().name(),
                             t.getKwota(),
                             t.getWaluta(),
