@@ -8,6 +8,7 @@ public record TransakcjaHistoriaResponse(
         Long kontoId,
         String kierunek,
         String numerKontaKontrahenta,
+        String imieKontrahenta,
         String typ,
         BigDecimal kwota,
         String waluta,
